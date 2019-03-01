@@ -33,14 +33,14 @@ if __name__=="__main__":
     parser.add_argument("--checkpoint-dir",default=None,help="Checkpoint dir, saved every 10min")
     parser.add_argument("--lr",type=float,default=0.001,help="learning rate")
     parser.add_argument("--model-class",help="Model class from model.py")
-    parser.add_argument("--data-pipeline", type=str, required=True,choices=["subword", "token"], help="Data pipeline type (subword or token)")
+    parser.add_argument("--pipeline", type=str, required=True,choices=["subword", "token"], help="Data pipeline type (subword or token)")
     parser.add_argument("--vocab", type=str, required=True, help="Vocab file name (for token data pipeline) or subword model name (for subword data pipeline, subword model name must be without .model or .vocab extension)")
     args=parser.parse_args()
     os.makedirs(args.checkpoint_dir,exist_ok=True)
     datafiles=args.data
 
-    print("Data Pipeline:", args.data_pipeline, file=sys.stderr)
-    if args.data_pipeline=="subword":
+    print("Data Pipeline:", args.pipeline, file=sys.stderr)
+    if args.pipeline=="subword":
         data_pipeline=data.SubwordDataPipeline(subword_model=args.vocab)
     else:
         data_pipeline=data.TokenDataPipeline(vocab=args.vocab)
