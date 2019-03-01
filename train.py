@@ -7,7 +7,7 @@ from tensorflow.keras.callbacks import Callback,ModelCheckpoint
 import os
 import sys
 
-config = tf.ConfigProto()
+config = tf.ConfigProto()#(log_device_placement=True)
 config.gpu_options.allow_growth = True
 tf.keras.backend.set_session(tf.Session(config=config))
 
@@ -43,7 +43,7 @@ if __name__=="__main__":
 
     
     
-    train_dataset=data.dataset_from_conllu(datafiles[:-1],"vocab.txt").repeat()
+    train_dataset=data.dataset_from_conllu(datafiles[:-1],"vocab.txt").prefetch(20).repeat()
     train_it=train_dataset.make_initializable_iterator() #this is needed because of the table lookup op
 
     dev_dataset=data.dataset_from_conllu(datafiles[-1:],"vocab.txt").shuffle(1000).take(100).repeat()

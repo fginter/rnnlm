@@ -5,6 +5,7 @@ import tensorflow as tf
 import sys
 import numpy as np
 import random
+import multiprocessing as mp
 
 ID,FORM,LEMMA,FEAT,UPOS,XPOS,HEAD,DEPREL,DEPS,MISC=range(10)
 
@@ -40,16 +41,17 @@ def yield_sents_from_conllu(conllu_names,add_markers=True):
 
 
 
+
 def dataset_from_conllu(conllu_name,vocab_name):
     #TODO: switch to tf.contrib.lookup.index_table_from_file ?
     vocab_table_init=tf.contrib.lookup.TextFileInitializer(vocab_name,tf.string,0,tf.int64,1,delimiter="\t") 
     vocab_lookup=tf.contrib.lookup.HashTable(vocab_table_init,1,"vocab_lookup","vocab_lookup_op") #1 is the index of <UNK> in the vocabulary. 0 is pad and 2 is <EOS>
 
     shape=tf.TensorShape([None]) #sentence generator produces sequences of words of arbitrary length, so this is their shape
-    sentences=tf.data.Dataset.from_generator(lambda: yield_sents_from_conllu(conllu_name),output_types=(tf.string,),output_shapes=(shape,))
+    sentences=tf.data.Dataset.from_generator(lambda: yield_sents_from_conllu(conllu_name),output_types=(tf.string,),output_shapes=(shape,)).prefetch(20)
     sentences=sentences.filter(lambda seq: tf.shape(seq)[0]<=35)
     sentences=sentences.filter(lambda seq: tf.shape(seq)[0]>=5)
-    sentences_num=sentences.map(vocab_lookup.lookup)
+    sentences_num=sentences.map(vocab_lookup.lookup,num_parallel_calls=2)
     sentences_xy=sentences_num.map(lambda seq: (seq[:-1],seq[1:]))
     
     elem_len_func=lambda x,y: tf.shape(x)[0] #length of sequence is its first shape element
