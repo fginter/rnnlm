@@ -25,10 +25,6 @@ class BSaver(Callback):
             self.model.save(self.name)
             print("\n\nSaving, having seen",self.batch,"batches\n",file=sys.stderr,flush=True)
         self.batch += 1
-
-def get_vocab_size(vocab_file_name):
-    contents=open(vocab_file_name,encoding="utf-8").read().strip()
-    return len(contents.split("\n"))
             
         
 if __name__=="__main__":
@@ -37,23 +33,29 @@ if __name__=="__main__":
     parser.add_argument("--checkpoint-dir",default=None,help="Checkpoint dir, saved every 10min")
     parser.add_argument("--lr",type=float,default=0.001,help="learning rate")
     parser.add_argument("--model-class",help="Model class from model.py")
+    parser.add_argument("--data-pipeline", type=str, required=True,choices=["subword", "token"], help="Data pipeline type (subword or token)")
+    parser.add_argument("--vocab", type=str, required=True, help="Vocab file name (for token data pipeline) or subword model name (for subword data pipeline, subword model name must be without .model or .vocab extension)")
     args=parser.parse_args()
     os.makedirs(args.checkpoint_dir,exist_ok=True)
     datafiles=args.data
 
+    print("Data Pipeline:", args.data_pipeline, file=sys.stderr)
+    if args.data_pipeline=="subword":
+        data_pipeline=data.SubwordDataPipeline(subword_model=args.vocab, add_markers=True)
+    else:
+        data_pipeline=data.TokenDataPipeline(vocab=args.vocab, add_markers=True)
     
-    
-    train_dataset=data.dataset_from_conllu(datafiles[:-1],"vocab.txt").prefetch(20).repeat()
+    train_dataset=data_pipeline.dataset_from_conllu(datafiles[:-1]).prefetch(20).repeat()
     train_it=train_dataset.make_initializable_iterator() #this is needed because of the table lookup op
 
-    dev_dataset=data.dataset_from_conllu(datafiles[-1:],"vocab.txt").shuffle(1000).take(100).repeat()
+    dev_dataset=data_pipeline.dataset_from_conllu(datafiles[-1:]).shuffle(1000).take(100).repeat()
     dev_it=dev_dataset.make_initializable_iterator() #this is needed because of the table lookup op
 
     train_init_op=train_it.initializer
     dev_init_op=dev_it.initializer
 
     model_class=getattr(model,args.model_class)
-    m=model_class(vocab_size=get_vocab_size("vocab.txt"))
+    m=model_class(vocab_size=data_pipeline.vocab_size)
     keras_m=m.model
     opt=tf.keras.optimizers.Adam(lr=args.lr,beta_2=0.99,amsgrad=True)
     #opt=tf.keras.optimizers.Adagrad(lr=args.lr)
