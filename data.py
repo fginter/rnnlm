@@ -7,6 +7,7 @@ import numpy as np
 import random
 import multiprocessing as mp
 import sentencepiece as sp
+import conllu_utils
 
 class DataPipeline:
 
@@ -27,7 +28,7 @@ class DataPipeline:
 
 
     def dataset_from_conllu_names(self, conllu_names):
-        sentences_num=self.indexed_dataset(conllu_names)
+        sentences=self.indexed_dataset(conllu_names).prefetch(20)
         
         sentences=sentences.filter(lambda seq: tf.shape(seq)[0]<=150)
         sentences=sentences.filter(lambda seq: tf.shape(seq)[0]>=5)
@@ -37,7 +38,7 @@ class DataPipeline:
         bucket_boundaries=np.arange(5,155,20) #5,10,15,... generate one-extra so we can get bucket_batch_sizes easily
         bucketeer=tf.data.experimental.bucket_by_sequence_length(element_length_func=elem_len_func,
                                                                  bucket_boundaries=bucket_boundaries[:-1], #one less, since bucket_batch_sizes must be one longer than the boundaries
-                                                                 bucket_batch_sizes=[2000//i for i in bucket_boundaries])
+                                                                 bucket_batch_sizes=[4000//i for i in bucket_boundaries])
         sentences_bucketed=sentences_xy.apply(bucketeer)
         sentences_bucketed=sentences_bucketed.map(lambda x,y: (x,tf.expand_dims(y,-1)))
         return sentences_bucketed
@@ -45,11 +46,11 @@ class DataPipeline:
 class TokenDataPipeline(DataPipeline):
 
     def __init__(self, vocab_file_name, batch_size=5):
-        super(self,DataPipeline).init(batch_size)
+        super(TokenDataPipeline,self).init(batch_size)
         self.vocab_name=vocab_file_name
         self.vocab_size=self.get_vocab_size(vocab_file_name)
 
-    def indexed_dataset(conllu_names):
+    def indexed_dataset(self,conllu_names):
         #TODO: switch to tf.contrib.lookup.index_table_from_file ?
         vocab_table_init=tf.contrib.lookup.TextFileInitializer(self.vocab_name,tf.string,0,tf.int64,1,delimiter="\t") 
         vocab_lookup=tf.contrib.lookup.HashTable(vocab_table_init,1,"vocab_lookup","vocab_lookup_op") #1 is the index of <UNK> in the vocabulary. 0 is pad and 2 is <EOS>
@@ -62,22 +63,22 @@ class TokenDataPipeline(DataPipeline):
 class SubwordDataPipeline(DataPipeline):
 
     def __init__(self, subword_model_name, batch_size=5):
-        super(self,DataPipeline).init(batch_size)
+        super(SubwordDataPipeline,self).__init__(batch_size)
         self.subword_model=sp.SentencePieceProcessor()
         self.subword_model.Load("{name}.model".format(name=subword_model_name))
         # if add_markers:
         #     self.subword_model.SetEncodeExtraOptions(extra_option="bos:eos")
         self.vocab_size=self.get_vocab_size(subword_model_name+".vocab")
 
-    def indexed_dataset(conllu_names):
+    def indexed_dataset(self,conllu_names):
         shape=tf.TensorShape([None]) #sentence generator produces sequences of words of arbitrary length, so this is their shape
         word_lists=self.yield_wordlists_from_conllu(conllu_names)
         sentences_num=tf.data.Dataset.from_generator(lambda: self.index(word_lists), output_types=(tf.int32,), output_shapes=(shape,))
         return sentences_num
 
-    def index(wordlists):
+    def index(self,wordlists):
         for wordlist in wordlists:
-            ids=self.subword_model.EncodeAsIds(" ".join(wordlist))
+            ids=self.subword_model.EncodeAsIds(" ".join(wordlist[0]))
             yield (ids,)
 
 

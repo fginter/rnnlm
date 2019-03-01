@@ -41,14 +41,14 @@ if __name__=="__main__":
 
     print("Data Pipeline:", args.pipeline, file=sys.stderr)
     if args.pipeline=="subword":
-        data_pipeline=data.SubwordDataPipeline(subword_model=args.vocab)
+        data_pipeline=data.SubwordDataPipeline(subword_model_name=args.vocab)
     else:
         data_pipeline=data.TokenDataPipeline(vocab=args.vocab)
     
-    train_dataset=data_pipeline.dataset_from_conllu(datafiles[:-1]).prefetch(1).repeat()
+    train_dataset=data_pipeline.dataset_from_conllu_names(datafiles[:-1]).prefetch(20).repeat()
     train_it=train_dataset.make_initializable_iterator() #this is needed because of the table lookup op
 
-    dev_dataset=data_pipeline.dataset_from_conllu(datafiles[-1:]).shuffle(1000).take(100).repeat()
+    dev_dataset=data_pipeline.dataset_from_conllu_names(datafiles[-1:]).shuffle(1000).take(100).repeat()
     dev_it=dev_dataset.make_initializable_iterator() #this is needed because of the table lookup op
 
     train_init_op=train_it.initializer
