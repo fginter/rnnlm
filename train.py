@@ -41,11 +41,11 @@ if __name__=="__main__":
 
     print("Data Pipeline:", args.data_pipeline, file=sys.stderr)
     if args.data_pipeline=="subword":
-        data_pipeline=data.SubwordDataPipeline(subword_model=args.vocab, add_markers=True)
+        data_pipeline=data.SubwordDataPipeline(subword_model=args.vocab)
     else:
-        data_pipeline=data.TokenDataPipeline(vocab=args.vocab, add_markers=True)
+        data_pipeline=data.TokenDataPipeline(vocab=args.vocab)
     
-    train_dataset=data_pipeline.dataset_from_conllu(datafiles[:-1]).prefetch(20).repeat()
+    train_dataset=data_pipeline.dataset_from_conllu(datafiles[:-1]).prefetch(1).repeat()
     train_it=train_dataset.make_initializable_iterator() #this is needed because of the table lookup op
 
     dev_dataset=data_pipeline.dataset_from_conllu(datafiles[-1:]).shuffle(1000).take(100).repeat()
@@ -63,7 +63,7 @@ if __name__=="__main__":
     keras_m.summary()
 
     saver=ModelCheckpoint(os.path.join(args.checkpoint_dir,"best.rnnlm"),save_best_only=True,verbose=1)
-    saver_all=ModelCheckpoint(os.path.join(args.checkpoint_dir,"epochlast.rnnlm"),verbose=1)
+    saver_all=ModelCheckpoint(os.path.join(args.checkpoint_dir,"epoch.{epoch:05d}.last.rnnlm"),verbose=1)
     #saver_security=BSaver(10,os.path.join(args.checkpoint_dir,"last.rnnlm"))
 
     
