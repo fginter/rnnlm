@@ -6,6 +6,7 @@ import argparse
 from tensorflow.keras.callbacks import Callback,ModelCheckpoint
 import os
 import sys
+import datetime
 
 config = tf.ConfigProto()#(log_device_placement=True)
 config.gpu_options.allow_growth = True
@@ -31,6 +32,7 @@ if __name__=="__main__":
     parser=argparse.ArgumentParser(description="LM train")
     parser.add_argument("--data",nargs="+",help="Data files")
     parser.add_argument("--checkpoint-dir",default=None,help="Checkpoint dir, saved every 10min")
+    parser.add_argument("--restart",default=None,help="Restart from a given checkpoint file")
     parser.add_argument("--lr",type=float,default=0.001,help="learning rate")
     parser.add_argument("--model-class",help="Model class from model.py")
     parser.add_argument("--pipeline", type=str, required=True,choices=["subword", "token"], help="Data pipeline type (subword or token)")
@@ -46,7 +48,7 @@ if __name__=="__main__":
         data_pipeline=data.TokenDataPipeline(vocab=args.vocab)
     
     train_dataset=data_pipeline.dataset_from_conllu_names(datafiles[:-1]).prefetch(20).repeat()
-    train_it=train_dataset.make_initializable_iterator() #this is needed because of the table lookup op
+    train_it=train_dataset.make_initializable_iterator() #this is needed because of the table lookup opn
 
     dev_dataset=data_pipeline.dataset_from_conllu_names(datafiles[-1:]).shuffle(1000).take(100).repeat()
     dev_it=dev_dataset.make_initializable_iterator() #this is needed because of the table lookup op
@@ -54,16 +56,25 @@ if __name__=="__main__":
     train_init_op=train_it.initializer
     dev_init_op=dev_it.initializer
 
-    model_class=getattr(model,args.model_class)
-    m=model_class(vocab_size=data_pipeline.vocab_size)
-    keras_m=m.model
-    opt=tf.keras.optimizers.Adam(lr=args.lr,beta_2=0.99,amsgrad=True)
-    #opt=tf.keras.optimizers.Adagrad(lr=args.lr)
-    keras_m.compile(loss="sparse_categorical_crossentropy",optimizer=opt,sample_weight_mode="temporal")
-    keras_m.summary()
+
+    run_timestamp=datetime.datetime.now().strftime("%Y-%m-%d-%H-%M")
+    if args.restart:
+        print("Restarting from",args.restart,file=sys.stderr,flush=True)
+        keras_m=tf.keras.models.load_model(args.restart)
+        keras_m.summary()
+    else:
+        model_class=getattr(model,args.model_class)
+        m=model_class(vocab_size=data_pipeline.vocab_size)
+        keras_m=m.model
+        opt=tf.keras.optimizers.Adam(lr=args.lr,beta_2=0.99,amsgrad=True)
+        #opt=tf.keras.optimizers.Adagrad(lr=args.lr)
+        keras_m.compile(loss="sparse_categorical_crossentropy",optimizer=opt,sample_weight_mode="temporal")
+        keras_m.summary()
 
     saver=ModelCheckpoint(os.path.join(args.checkpoint_dir,"best.rnnlm"),save_best_only=True,verbose=1)
-    saver_all=ModelCheckpoint(os.path.join(args.checkpoint_dir,"epoch.{epoch:05d}.last.rnnlm"),verbose=1)
+    epoch_filename="epoch.{tstamp}.{{epoch:05d}}.last.rnnlm".format(tstamp=run_timestamp)
+    print("Will save epoch models named as",epoch_filename,file=sys.stderr,flush=True)
+    saver_all=ModelCheckpoint(os.path.join(args.checkpoint_dir,epoch_filename),verbose=1)
     #saver_security=BSaver(10,os.path.join(args.checkpoint_dir,"last.rnnlm"))
 
     
