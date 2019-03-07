@@ -38,7 +38,7 @@ class DataPipeline:
         bucket_boundaries=np.arange(5,155,20) #5,10,15,... generate one-extra so we can get bucket_batch_sizes easily
         bucketeer=tf.data.experimental.bucket_by_sequence_length(element_length_func=elem_len_func,
                                                                  bucket_boundaries=bucket_boundaries[:-1], #one less, since bucket_batch_sizes must be one longer than the boundaries
-                                                                 bucket_batch_sizes=[4000//i for i in bucket_boundaries])
+                                                                 bucket_batch_sizes=[16000//i for i in bucket_boundaries])
         sentences_bucketed=sentences_xy.apply(bucketeer)
         sentences_bucketed=sentences_bucketed.map(lambda x,y: (x,tf.expand_dims(y,-1)))
         return sentences_bucketed
