@@ -11,15 +11,20 @@ import conllu_utils
 
 class DataPipeline:
 
-    def __init__(self,batch_size):
+    def __init__(self,batch_size,repeat=True):
         self.batch_size=batch_size
+        self.repeat=repeat
 
     def yield_wordlists_from_conllu(self, conllu_names):
-        random.shuffle(conllu_names)
-        for counter,wordlist in enumerate(conllu_utils.word_lists_from_conllus(conllu_names,self.batch_size)):
-            yield (wordlist,) #...we need to yield tuples, even if they only had one element, they need to be explicitly there for the dataset interface to work
-            if (counter+1) % 10000==0:
-                print("\n\nSeen",counter*self.batch_size,"sentences\n",file=sys.stderr,flush=True)
+        """repeat: endeless loop"""
+        while True:
+            random.shuffle(conllu_names)
+            for counter,wordlist in enumerate(conllu_utils.word_lists_from_conllus(conllu_names,self.batch_size)):
+                yield (wordlist,) #...we need to yield tuples, even if they only had one element, they need to be explicitly there for the dataset interface to work
+                if (counter+1) % 10000==0:
+                    print("\n\nSeen",counter*self.batch_size,"sentences\n",file=sys.stderr,flush=True)
+            if not self.repeat:
+                break
 
     def get_vocab_size(self, vocab_file_name):
         with open(vocab_file_name, "rt", encoding="utf-8") as f:
@@ -38,7 +43,7 @@ class DataPipeline:
         bucket_boundaries=np.arange(5,155,20) #5,10,15,... generate one-extra so we can get bucket_batch_sizes easily
         bucketeer=tf.data.experimental.bucket_by_sequence_length(element_length_func=elem_len_func,
                                                                  bucket_boundaries=bucket_boundaries[:-1], #one less, since bucket_batch_sizes must be one longer than the boundaries
-                                                                 bucket_batch_sizes=[4000//i for i in bucket_boundaries])
+                                                                 bucket_batch_sizes=[12000//i for i in bucket_boundaries])
         sentences_bucketed=sentences_xy.apply(bucketeer)
         sentences_bucketed=sentences_bucketed.map(lambda x,y: (x,tf.expand_dims(y,-1)))
         return sentences_bucketed
@@ -64,11 +69,13 @@ class SubwordDataPipeline(DataPipeline):
 
     def __init__(self, subword_model_name, batch_size=5):
         super(SubwordDataPipeline,self).__init__(batch_size)
+        self.subword_model_name=subword_model_name
         self.subword_model=sp.SentencePieceProcessor()
         self.subword_model.Load("{name}.model".format(name=subword_model_name))
         # if add_markers:
         #     self.subword_model.SetEncodeExtraOptions(extra_option="bos:eos")
         self.vocab_size=self.get_vocab_size(subword_model_name+".vocab")
+        self.pool=mp.Pool(4,worker_init,[self.subword_model_name])
 
     def indexed_dataset(self,conllu_names):
         shape=tf.TensorShape([None]) #sentence generator produces sequences of words of arbitrary length, so this is their shape
@@ -77,10 +84,30 @@ class SubwordDataPipeline(DataPipeline):
         return sentences_num
 
     def index(self,wordlists):
+        # for ids in self.pool.imap_unordered(worker,wordlists):
+        #     yield (ids,)
         for wordlist in wordlists:
             ids=self.subword_model.EncodeAsIds(" ".join(wordlist[0]))
             yield (ids,)
 
+
+            
+def worker_init(subword_model_name):
+    global wrkr_sp
+    wrkr_sp=SentencePiece(subword_model_name)
+
+def worker(wordlist):
+    global wrkr_sp
+    return wrkr_sp(wordlist)
+            
+class SentencePiece:
+
+    def __init__(self,subword_model_name):
+        self.subword_model=sp.SentencePieceProcessor()
+        self.subword_model.Load("{name}.model".format(name=subword_model_name))
+
+    def __call__(self,wordlist):
+        return self.subword_model.EncodeAsIds(" ".join(wordlist[0]))
 
 if __name__=="__main__":
     sentences=yield_sents_from_conllu("/dev/stdin",add_markers=False)
