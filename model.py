@@ -46,3 +46,28 @@ class LSTMModel_1:
         dec_td=TimeDistributed(dec)(proj_weights)
         mod=tf.keras.Model(inputs=[inp],outputs=[dec_td])
         return mod
+
+
+class LSTMModel_2:
+
+    def __init__(self,vocab_size):
+        self.model=self.make_model(vocab_size)
+
+
+    def make_model(self,vocab_size):
+        inp=Input(shape=(None,),dtype=tf.int64,name="input_sent")
+        emb_layer=Embedding(input_dim=vocab_size,output_dim=768,embeddings_initializer=tf.keras.initializers.Constant(0.01))
+        emb=emb_layer(inp)
+        emb_drop=Dropout(0.2)(emb)
+        emb_drop_n=BatchNormalization()(emb_drop)
+        rnn1=LSTM(768,return_sequences=True)(emb_drop_n)
+        rnn1_n=BatchNormalization()(rnn1)
+        rnn2=LSTM(768,return_sequences=True)(rnn1_n)
+        rnn2_n=BatchNormalization()(rnn2)
+        rnn3=LSTM(768,return_sequences=True)(rnn2_n)
+        rnn3_n=BatchNormalization()(rnn3)
+        proj_weights=TimeDistributed(Dense(512,activation="tanh"))(Add()([rnn1_n,rnn2_n,rnn3_n]))
+        dec=Dense(vocab_size,activation="softmax",name="decision")
+        dec_td=TimeDistributed(dec)(proj_weights)
+        mod=tf.keras.Model(inputs=[inp],outputs=[dec_td])
+        return mod
