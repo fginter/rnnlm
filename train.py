@@ -35,6 +35,7 @@ if __name__=="__main__":
     parser.add_argument("--restart",default=None,help="Restart from a given checkpoint file")
     parser.add_argument("--lr",type=float,default=0.001,help="learning rate")
     parser.add_argument("--model-class",help="Model class from model.py")
+    parser.add_argument("--items-per-batch",type=int,default=16000,help="items (words, s-pieces) in one batch default: %(default)d")
     parser.add_argument("--pipeline", type=str, required=True,choices=["subword", "token"], help="Data pipeline type (subword or token)")
     parser.add_argument("--vocab", type=str, required=True, help="Vocab file name (for token data pipeline) or subword model name (for subword data pipeline, subword model name must be without .model or .vocab extension)")
     args=parser.parse_args()
@@ -47,10 +48,10 @@ if __name__=="__main__":
     else:
         data_pipeline=data.TokenDataPipeline(vocab=args.vocab)
     
-    train_dataset=data_pipeline.dataset_from_conllu_names(datafiles[:-1]).prefetch(20).repeat()
+    train_dataset=data_pipeline.dataset_from_conllu_names(datafiles[:-1], items_per_batch=args.items_per_batch).prefetch(20).repeat()
     train_it=train_dataset.make_initializable_iterator() #this is needed because of the table lookup opn
 
-    dev_dataset=data_pipeline.dataset_from_conllu_names(datafiles[-1:]).shuffle(1000).take(100).repeat()
+    dev_dataset=data_pipeline.dataset_from_conllu_names(datafiles[-1:], items_per_batch=args.items_per_batch).shuffle(1000).take(100).repeat()
     dev_it=dev_dataset.make_initializable_iterator() #this is needed because of the table lookup op
 
     train_init_op=train_it.initializer
