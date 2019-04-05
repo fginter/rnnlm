@@ -8,6 +8,8 @@ import os
 import sys
 import datetime
 
+
+
 config = tf.ConfigProto()#(log_device_placement=True)
 config.gpu_options.allow_growth = True
 tf.keras.backend.set_session(tf.Session(config=config))
@@ -34,6 +36,9 @@ if __name__=="__main__":
     parser.add_argument("--checkpoint-dir",default=None,help="Checkpoint dir, saved every 10min")
     parser.add_argument("--restart",default=None,help="Restart from a given checkpoint file")
     parser.add_argument("--lr",type=float,default=0.001,help="learning rate")
+    parser.add_argument("--steps-per-epoch",type=int,default=5000,help="Batches in one epoch. Default: %(default)d")
+    parser.add_argument("--epochs",type=int,default=10000,help="Epochs. Default: %(default)d")
+    parser.add_argument("--validation-steps",type=int,default=20,help="Validation batches. Default: %(default)d")
     parser.add_argument("--model-class",help="Model class from model.py")
     parser.add_argument("--items-per-batch",type=int,default=16000,help="items (words, s-pieces) in one batch default: %(default)d")
     parser.add_argument("--pipeline", type=str, required=True,choices=["subword", "token"], help="Data pipeline type (subword or token)")
@@ -59,18 +64,20 @@ if __name__=="__main__":
 
 
     run_timestamp=datetime.datetime.now().strftime("%Y-%m-%d-%H-%M")
+    model_class=getattr(model,args.model_class)
     if args.restart:
         print("Restarting from",args.restart,file=sys.stderr,flush=True)
-        keras_m=tf.keras.models.load_model(args.restart)
-        keras_m.summary()
+        keras_m=model_class(vocab_size=data_pipeline.vocab_size,training=True)
+        keras_m.load_weights_and_opt(args.restart,by_name=True)
+        
     else:
-        model_class=getattr(model,args.model_class)
-        m=model_class(vocab_size=data_pipeline.vocab_size)
-        keras_m=m.model
+        keras_m=model_class(vocab_size=data_pipeline.vocab_size,training=True)
         opt=tf.keras.optimizers.Adam(lr=args.lr,beta_2=0.99,amsgrad=True)
         #opt=tf.keras.optimizers.Adagrad(lr=args.lr)
         keras_m.compile(loss="sparse_categorical_crossentropy",optimizer=opt,sample_weight_mode="temporal")
-        keras_m.summary()
+        #keras_m.save(args.checkpoint_dir+"/initial.h5")
+        #print(tf.keras.optimizers.serialize(keras_m.optimizer))
+        #keras_m.summary()
 
     saver=ModelCheckpoint(os.path.join(args.checkpoint_dir,"best.rnnlm"),save_best_only=True,verbose=1)
     epoch_filename="epoch.{tstamp}.{{epoch:05d}}.last.rnnlm".format(tstamp=run_timestamp)
@@ -83,7 +90,9 @@ if __name__=="__main__":
         sess.run(tf.tables_initializer())
         sess.run(train_init_op)
         sess.run(dev_init_op)
-        keras_m.fit(train_it,validation_data=dev_it,steps_per_epoch=10000,epochs=20000,validation_steps=100,callbacks=[saver,saver_all])
+        print("START FIT")
+        keras_m.fit(train_it,validation_data=dev_it,steps_per_epoch=args.steps_per_epoch,epochs=args.epochs,validation_steps=args.validation_steps,callbacks=[saver,saver_all])
+        print("DONE FIT")
         # while True:
         #     try:
         #         elem=sess.run(next_elem)
